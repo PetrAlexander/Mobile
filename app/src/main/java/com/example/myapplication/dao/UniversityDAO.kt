@@ -7,19 +7,19 @@ import com.example.myapplication.data.Student
 
 @Dao
 interface UniversityDAO {
-    @Insert(entity = Faculty::class,/*onConflict = OnConflictStrategy.REPLACE*/)
+    @Insert(entity = Faculty::class/*onConflict = OnConflictStrategy.REPLACE*/)
     fun insertNewFaculty(faculty: Faculty)
 
     @Query("DELETE FROM university WHERE id = :facultyID")
     fun deleteFacultyByID(facultyID: Long)
 
     @Delete(entity = Faculty::class)
-    fun deleteFaculty (faculty: Faculty)
+    fun deleteFaculty(faculty: Faculty)
 
     @Query("SELECT id, faculty_name FROM university order by faculty_name")
     fun loadUniversity(): List<Faculty>
 
-    @Update(entity= Faculty::class)
+    @Update(entity = Faculty::class)
     fun updateFaculty(faculty: Faculty)
 
     @Query("SELECT id, faculty_name FROM university where id=:id")
@@ -28,7 +28,7 @@ interface UniversityDAO {
     @Query("SELECT * FROM faculty where faculty_id=:facultyID order by group_name")
     fun loadFacultyGroup(facultyID: Long): List<Group>
 
-    @Insert(entity = Group::class,/*onConflict = OnConflictStrategy.REPLACE*/)
+    @Insert(entity = Group::class, onConflict = OnConflictStrategy.REPLACE)
     fun insertNewGroup(group: Group)
 
     @Delete(entity = Group::class)
@@ -59,7 +59,7 @@ interface UniversityDAO {
     fun getStudent(id: Long): Student?
 
     @Query("SELECT * FROM student where group_id=:groupID order by last_name")
-    fun loadGroupStudents(groupID : Long): List<Student>
+    fun loadGroupStudents(groupID: Long): List<Student>
 
     @Query("DELETE FROM university")
     fun deleteAllFaculty()

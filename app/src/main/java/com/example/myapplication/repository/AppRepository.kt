@@ -3,7 +3,11 @@ package com.example.myapplication.repository
 import androidx.lifecycle.MutableLiveData
 import androidx.room.Room
 import com.example.myapplication.Second352_2023Application
+import com.example.myapplication.api.FacultyNet
+import com.example.myapplication.api.GroupNet
 import com.example.myapplication.api.ServerAPI
+import com.example.myapplication.api.StudentNet
+import com.example.myapplication.api.UniversityNet
 import com.example.myapplication.data.Faculty
 import com.example.myapplication.data.Group
 import com.example.myapplication.data.Student
@@ -20,19 +24,30 @@ class AppRepository private constructor() {
     var faculty: MutableLiveData<List<Group>> = MutableLiveData()
     var group: MutableLiveData<List<Student>> = MutableLiveData()
 
-    companion object{
+    companion object {
         private var INSTANCE: AppRepository? = null
 
-        fun newInstance(){
-            if (INSTANCE == null){
+        fun newInstance() {
+            if (INSTANCE == null) {
                 INSTANCE = AppRepository()
+                INSTANCE!!.getAPI()
+                INSTANCE!!.getServerFaculty()
             }
         }
-        fun get(): AppRepository{
-            return INSTANCE?:
-            throw IllegalAccessException("Репозиторий не инициализирован")
+
+        fun get(): AppRepository {
+            return INSTANCE ?: throw IllegalAccessException("Репозиторий не инициализирован")
+        }
+
+        suspend fun postUniversityRepo() {
+            if (INSTANCE?.myServerAPI != null) {
+                val job = CoroutineScope(Dispatchers.IO).launch {
+                    INSTANCE?.myServerAPI!!.postUniversity(INSTANCE?.prepareData()!!)
+                }
+                job.join()
             }
         }
+    }
 
     val db = Room.databaseBuilder(
         Second352_2023Application.applicationContext(),
@@ -41,9 +56,51 @@ class AppRepository private constructor() {
 
     val universityDao = db.getDao()
 
-    suspend fun newFaculty (name: String){
-        val faculty =Faculty(id=null,name=name)
-        withContext(Dispatchers.IO){
+    fun prepareData(): UniversityNet {
+        val u = university.value
+        val universityNet = ArrayList<FacultyNet>()
+        if (u != null) {
+            for (faculty in u) {
+                val groups = universityDao.loadFacultyGroup(faculty.id!!)
+                val groupList = ArrayList<GroupNet>()
+                for (g in groups) {
+                    val students = universityDao.loadGroupStudents(g.id!!)
+                    val studentList = ArrayList<StudentNet>()
+                    for (s in students) {
+                        val studentNet = StudentNet(
+                            s.birthDate!!.toInt(),
+                            s.firstName!!,
+                            s.groupID!!.toInt(),
+                            s.id!!.toInt(),
+                            s.lastName!!,
+                            s.middleName!!,
+                            s.phone!!
+                        )
+                        studentList.add(studentNet)
+                    }
+                    val groupNet = GroupNet(
+                        faculty.id.toInt(),
+                        g.id.toInt(),
+                        g.name!!,
+                        studentList
+                    )
+                    groupList.add(groupNet)
+                }
+                val facultyNet = FacultyNet(
+                    groupList,
+                    faculty.id.toInt(),
+                    faculty.name!!
+                )
+                universityNet.add(facultyNet)
+            }
+        }
+        val uN = UniversityNet(universityNet)
+        return uN
+    }
+
+    suspend fun newFaculty(name: String) {
+        val faculty = Faculty(id = null, name = name)
+        withContext(Dispatchers.IO) {
             universityDao.insertNewFaculty(faculty)
             university.postValue(universityDao.loadUniversity())
         }
@@ -56,27 +113,39 @@ class AppRepository private constructor() {
         }
     }
 
-    suspend fun loadFaculty (){
-        withContext(Dispatchers.IO){
+    suspend fun editFaculty(s: String, faculty: Faculty) {
+        withContext(Dispatchers.IO) {
+            //universityDao.insertNewStudent(student)
+            faculty.name = s
+            universityDao.updateFaculty(faculty)
             university.postValue(universityDao.loadUniversity())
         }
     }
-    suspend fun getFacultyGroups (facultyID: Long){
-        withContext(Dispatchers.IO){
+
+
+    suspend fun loadFaculty() {
+        withContext(Dispatchers.IO) {
+            university.postValue(universityDao.loadUniversity())
+        }
+    }
+
+    suspend fun getFacultyGroups(facultyID: Long) {
+        withContext(Dispatchers.IO) {
             faculty.postValue(universityDao.loadFacultyGroup(facultyID))
         }
     }
-    suspend fun getfaculty(facultyID: Long): Faculty?{
-        var f : Faculty?=null
-        val job= CoroutineScope(Dispatchers.IO).launch {
-            f=universityDao.getFaculty(facultyID)
+
+    suspend fun getfaculty(facultyID: Long): Faculty? {
+        var f: Faculty? = null
+        val job = CoroutineScope(Dispatchers.IO).launch {
+            f = universityDao.getFaculty(facultyID)
         }
         job.join()
         return f
     }
 
-    suspend fun getGroupStudents(groupID: Long) /*:List<Student> */{
-        withContext(Dispatchers.IO){
+    suspend fun getGroupStudents(groupID: Long) /*:List<Student> */ {
+        withContext(Dispatchers.IO) {
             group.postValue(universityDao.loadGroupStudents(groupID))
         }
 
@@ -89,7 +158,7 @@ class AppRepository private constructor() {
     }
 
     suspend fun newGroup(facultyID: Long, name: String) {
-        val group = Group(id=null,name=name,facultyID=facultyID)
+        val group = Group(id = null, name = name, facultyID = facultyID)
         withContext(Dispatchers.IO) {
             universityDao.insertNewGroup(group)
             getFacultyGroups(facultyID)
@@ -104,9 +173,9 @@ class AppRepository private constructor() {
     }
 
     suspend fun getGroup(groupID: Long): Group? {
-        var f : Group?=null
-        val job= CoroutineScope(Dispatchers.IO).launch {
-            f=universityDao.getGroup(groupID)
+        var f: Group? = null
+        val job = CoroutineScope(Dispatchers.IO).launch {
+            f = universityDao.getGroup(groupID)
         }
         job.join()
         return f
@@ -126,15 +195,6 @@ class AppRepository private constructor() {
         withContext(Dispatchers.IO) {
             universityDao.deleteStudent(student)
             getGroupStudents(student.groupID!!)
-        }
-    }
-
-    suspend fun editFaculty(s: String, faculty: Faculty) {
-        withContext(Dispatchers.IO) {
-            //universityDao.insertNewStudent(student)
-            faculty.name = s
-            universityDao.updateFaculty(faculty)
-            university.postValue(universityDao.loadUniversity())
         }
     }
 
@@ -163,74 +223,74 @@ class AppRepository private constructor() {
 //    }
 
     //передача н.факультета, определение списка(пустой или с уже созданными), добавление в него, обновление общее
-   /* fun newFaculty(name: String){
-        val faculty = Faculty(name=name)
-        val list: MutableList<Faculty> =
-            if (university.value != null)
-            {
-                (university.value as ArrayList<Faculty>)
-            }
-        else
-            ArrayList<Faculty>()
-        list.add(faculty)
-        university.postValue(list)
-    }
-    fun newGroup(facultyID: UUID, name: String){
-        // равно `null`, то `return` -выход из функции и возврат `null` иначе `value` присваивается переменной `u`.
-        val u = university.value?: return
-        val faculty = u.find{it. id== facultyID} ?: return
-        val group = Group(name=name)
-        val list: ArrayList<Group> =
-            if (faculty.groups.isEmpty())
-            ArrayList()
-            else
-                faculty.groups as ArrayList<Group>
-        list.add(group)
-        faculty.groups=list
-        university.postValue(u)
-    }
-    //`faculty` будет хранить первый элемент из `u`, который имеет `groups`, содержащие элемент с
-    // `id` равным `groupID`. Если таких элементов нет, то `faculty` будет равна `null`
-    fun newStudent(groupID: UUID, student: Student){
-        val u = university.value?: return
-        val faculty = u.find { it.groups.find { it.id == groupID } != null } ?: return
-        val group = faculty.groups.find { it.id == groupID }
-        val list: ArrayList<Student> = if (group!!.students.isEmpty())
-            ArrayList()
-        else
-            group.students as ArrayList<Student>
-        list.add(student)
-        group.students = list
-        university.postValue(u)
-    }
-    fun deleteStudent(groupID: UUID, student: Student){
-        val u = university.value?: return
-        val faculty = u.find { it.groups.find { it.id == groupID } != null } ?: return
-        val group = faculty.groups.find { it.id == groupID }
-        if (group!!.students.isEmpty()) return
-        val list = group.students as ArrayList<Student>
-        list.remove(student)
-        group.students = list
-        university.postValue(u)
-    }
-    fun editStudent(groupID: UUID, student: Student){
-        val u = university.value?: return
-        val faculty = u.find { it.groups.find { it.id == groupID } != null } ?: return
-        val group = faculty.groups.find { it.id == groupID } ?: return
-        val _student = group.students.find { it.id==student.id }
-        if (_student == null) {
-            newStudent(groupID,student)
-            return
-        }
-        val list = group.students as ArrayList<Student>
-        val i=list.indexOf(_student)
-        list.remove(_student)
-        list.add(i,student)
-        group.students = list
-        university.postValue(u)
-    }*/
+    /* fun newFaculty(name: String){
+         val faculty = Faculty(name=name)
+         val list: MutableList<Faculty> =
+             if (university.value != null)
+             {
+                 (university.value as ArrayList<Faculty>)
+             }
+         else
+             ArrayList<Faculty>()
+         list.add(faculty)
+         university.postValue(list)
+     }
+     fun newGroup(facultyID: UUID, name: String){
+         // равно `null`, то `return` -выход из функции и возврат `null` иначе `value` присваивается переменной `u`.
+         val u = university.value?: return
+         val faculty = u.find{it. id== facultyID} ?: return
+         val group = Group(name=name)
+         val list: ArrayList<Group> =
+             if (faculty.groups.isEmpty())
+             ArrayList()
+             else
+                 faculty.groups as ArrayList<Group>
+         list.add(group)
+         faculty.groups=list
+         university.postValue(u)
+     }
+     //`faculty` будет хранить первый элемент из `u`, который имеет `groups`, содержащие элемент с
+     // `id` равным `groupID`. Если таких элементов нет, то `faculty` будет равна `null`
+     fun newStudent(groupID: UUID, student: Student){
+         val u = university.value?: return
+         val faculty = u.find { it.groups.find { it.id == groupID } != null } ?: return
+         val group = faculty.groups.find { it.id == groupID }
+         val list: ArrayList<Student> = if (group!!.students.isEmpty())
+             ArrayList()
+         else
+             group.students as ArrayList<Student>
+         list.add(student)
+         group.students = list
+         university.postValue(u)
+     }
+     fun deleteStudent(groupID: UUID, student: Student){
+         val u = university.value?: return
+         val faculty = u.find { it.groups.find { it.id == groupID } != null } ?: return
+         val group = faculty.groups.find { it.id == groupID }
+         if (group!!.students.isEmpty()) return
+         val list = group.students as ArrayList<Student>
+         list.remove(student)
+         group.students = list
+         university.postValue(u)
+     }
+     fun editStudent(groupID: UUID, student: Student){
+         val u = university.value?: return
+         val faculty = u.find { it.groups.find { it.id == groupID } != null } ?: return
+         val group = faculty.groups.find { it.id == groupID } ?: return
+         val _student = group.students.find { it.id==student.id }
+         if (_student == null) {
+             newStudent(groupID,student)
+             return
+         }
+         val list = group.students as ArrayList<Student>
+         val i=list.indexOf(_student)
+         list.remove(_student)
+         list.add(i,student)
+         group.students = list
+         university.postValue(u)
+     }*/
 
-    private var myServerAPI : ServerAPI? = null
+    private var myServerAPI: ServerAPI? = null
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -238,10 +298,10 @@ class AppRepository private constructor() {
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    private fun getAPI(){
-        val url = ""
+    private fun getAPI() {
+        val url = "http://10.0.2.2:8080/"
         Retrofit.Builder()
-            .baseUrl("http://${url}")
+            .baseUrl(url)
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build().apply {
@@ -249,7 +309,7 @@ class AppRepository private constructor() {
             }
     }
 
-    fun getServerFaculty(){
+    fun getServerFaculty() {
         if (myServerAPI != null) {
             CoroutineScope(Dispatchers.Main).launch {
                 fetchFaculty()
@@ -260,17 +320,34 @@ class AppRepository private constructor() {
     private suspend fun fetchFaculty() {
         if (myServerAPI != null) {
             val job = CoroutineScope(Dispatchers.IO).launch {
-                val r = myServerAPI!!.getFaculty().execute()
-                if (r.isSuccessful){
+                val r = myServerAPI!!.getUniversity()
+                if (r.isSuccessful) {
                     val job = CoroutineScope(Dispatchers.IO).launch {
                         universityDao.deleteAllFaculty()
                     }
                     job.join()
 
-                    val facultyList = r.body()
+                    val facultyList = r.body()?.faculties
                     if (facultyList != null) {
                         for (f in facultyList) {
-                            universityDao.insertNewFaculty(f)
+                            val faculty = Faculty(f.id.toLong(), f.name)
+                            universityDao.insertNewFaculty(faculty)
+                            for (g in f.groups) {
+                                val group = Group(g.id.toLong(), g.name, faculty.id)
+                                universityDao.insertNewGroup(group)
+                                for (s in g.students) {
+                                    val student = Student(
+                                        s.id.toLong(),
+                                        s.firstName,
+                                        s.lastName,
+                                        s.middleName,
+                                        s.phone,
+                                        s.birthDate.toLong(),
+                                        group.id
+                                    )
+                                    universityDao.insertNewStudent(student)
+                                }
+                            }
                         }
                     }
                 }

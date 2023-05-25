@@ -70,6 +70,20 @@ class MainActivity : AppCompatActivity(), FacultyFragment.Callbacks, GroupListFr
         }
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        CoroutineScope(Dispatchers.IO).launch {
+            AppRepository.postUniversityRepo()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        CoroutineScope(Dispatchers.IO).launch {
+            AppRepository.postUniversityRepo()
+        }
+    }
+
     private fun showNameInputDialog(index:Int=-1){//создание диалогового окна
         val builder = AlertDialog.Builder(this)
         builder.setCancelable(true)
